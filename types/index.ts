@@ -64,3 +64,15 @@ export interface Invoice {
 }
 
 export type Locale = "en" | "fa";
+
+type ActivityEntity = "client" | "project" | "task" | "invoice";
+type ActivityAction = "created" | "updated" | "deleted";
+
+export interface ActivityEntry {
+  id: string;
+  user_id: string;
+  entity: ActivityEntity;
+  action: ActivityAction;
+  summary: string;
+  created_at: string;
+}

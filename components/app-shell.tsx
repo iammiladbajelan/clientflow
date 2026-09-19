@@ -10,7 +10,9 @@ import {
   IconUsers,
   IconFolder,
   IconCheck,
+  IconCalendar,
   IconInvoice,
+  IconTrend,
   IconSettings,
   IconLogout,
   IconMenu,
@@ -22,7 +24,9 @@ const NAV_ITEMS = [
   { href: "/clients", labelKey: "clients" as const, icon: IconUsers },
   { href: "/projects", labelKey: "projects" as const, icon: IconFolder },
   { href: "/tasks", labelKey: "tasks" as const, icon: IconCheck },
+  { href: "/calendar", labelKey: "calendar" as const, icon: IconCalendar },
   { href: "/invoices", labelKey: "invoices" as const, icon: IconInvoice },
+  { href: "/analytics", labelKey: "analytics" as const, icon: IconTrend },
   { href: "/settings", labelKey: "settings" as const, icon: IconSettings },
 ];
 

@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import type { TranslationKey } from "@/lib/translations";
-import type { Client, Project, Task, Invoice } from "@/types";
+import type { Client, Project, Task, Invoice, ActivityEntry } from "@/types";
 
 /** Human-readable Supabase/Postgres error → message key. */
 export function apiErrorKey(message: string | null | undefined): TranslationKey {
@@ -151,6 +151,30 @@ export const api = {
   async deleteInvoice(id: string) {
     const { error } = await supabase.from("invoices").delete().eq("id", id);
     if (error) throw error;
+  },
+
+  // ---- Activity log ----
+  /**
+   * Latest activity entries. Returns [] when the activity_log table does
+   * not exist yet (schema v3 not applied) so the dashboard degrades
+   * gracefully instead of throwing.
+   */
+  async activity(limit = 6): Promise<ActivityEntry[]> {
+    try {
+      const { data, error } = await supabase
+        .from("activity_log")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (error) {
+        if (error.code === "PGRST205" || error.message.includes("schema cache"))
+          return [];
+        throw error;
+      }
+      return (data ?? []) as ActivityEntry[];
+    } catch {
+      return [];
+    }
   },
 
   // ---- Client portal ----

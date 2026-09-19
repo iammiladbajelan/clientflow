@@ -294,3 +294,101 @@ as $$
   from projects p
   where p.share_token = p_token;
 $$;
+
+-- ============================================================
+-- 8. Activity log (auto-recorded by triggers)
+--    Every insert/update/delete on clients, projects, tasks and
+--    invoices appends one row here. Reads go through the owner's
+--    RLS policy; writes happen inside the trigger (definer rights).
+-- ============================================================
+
+create table if not exists activity_log (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  entity text not null check (entity in ('client', 'project', 'task', 'invoice')),
+  entity_id uuid,
+  action text not null check (action in ('created', 'updated', 'deleted')),
+  summary text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table activity_log enable row level security;
+
+drop policy if exists "activity_owner_read" on activity_log;
+create policy "activity_owner_read" on activity_log
+  for select using (auth.uid() = user_id);
+
+create index if not exists idx_activity_user_created
+  on activity_log (user_id, created_at desc);
+
+-- The main GRANT block above ran before this table existed.
+grant select, insert on activity_log to anon, authenticated;
+
+create or replace function log_activity()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_entity text;
+  v_action text;
+  v_summary text;
+  v_user uuid;
+begin
+  if tg_table_name = 'clients' then
+    v_entity := 'client';
+    v_user := coalesce(new.user_id, old.user_id);
+    v_summary := coalesce(new.name, old.name);
+  elsif tg_table_name = 'projects' then
+    v_entity := 'project';
+    v_user := coalesce(new.user_id, old.user_id);
+    v_summary := coalesce(new.name, old.name);
+  elsif tg_table_name = 'tasks' then
+    v_entity := 'task';
+    v_user := coalesce(new.user_id, old.user_id);
+    v_summary := coalesce(new.title, old.title);
+  else
+    v_entity := 'invoice';
+    v_user := coalesce(new.user_id, old.user_id);
+    v_summary := coalesce(new.number, old.number);
+  end if;
+
+  if tg_op = 'INSERT' then
+    v_action := 'created';
+  elsif tg_op = 'UPDATE' then
+    -- Skip "touch" updates where nothing but updated_at changed.
+    if (to_jsonb(new) - 'updated_at') = (to_jsonb(old) - 'updated_at') then
+      return coalesce(new, old);
+    end if;
+    v_action := 'updated';
+  else
+    v_action := 'deleted';
+  end if;
+
+  insert into activity_log (user_id, entity, entity_id, action, summary)
+  values (v_user, v_entity, coalesce(new.id, old.id), v_action, v_summary);
+
+  return coalesce(new, old);
+end;
+$$;
+
+drop trigger if exists clients_activity on clients;
+create trigger clients_activity
+  after insert or update or delete on clients
+  for each row execute function log_activity();
+
+drop trigger if exists projects_activity on projects;
+create trigger projects_activity
+  after insert or update or delete on projects
+  for each row execute function log_activity();
+
+drop trigger if exists tasks_activity on tasks;
+create trigger tasks_activity
+  after insert or update or delete on tasks
+  for each row execute function log_activity();
+
+drop trigger if exists invoices_activity on invoices;
+create trigger invoices_activity
+  after insert or update or delete on invoices
+  for each row execute function log_activity();

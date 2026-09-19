@@ -16,11 +16,12 @@ import {
 } from "@/components/icons";
 import { CardSkeleton, RowSkeleton, StatusBadge } from "@/components/ui/bits";
 import { useLocale } from "@/contexts/locale-context";
+import type { TranslationKey } from "@/lib/translations";
 import { useAuth } from "@/contexts/auth-context";
 import { supabase } from "@/lib/supabase";
 import { api } from "@/lib/api";
-import { formatCurrency, formatDate, relativeDays, isOverdue } from "@/lib/utils";
-import type { Invoice, Project, Task } from "@/types";
+import { formatCurrency, formatDate, relativeDays, isOverdue, timeAgo } from "@/lib/utils";
+import type { ActivityEntry, Invoice, Project, Task } from "@/types";
 
 export default function DashboardPage() {
   const { t } = useLocale();
@@ -30,6 +31,7 @@ export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [invoices, setInvoices] = useState<Invoice[] | null>(null);
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [error, setError] = useState(false);
   // Captured once per mount so render stays pure; deadlines don't need
   // to-the-second precision.
@@ -54,6 +56,11 @@ export default function DashboardPage() {
             .order("due_date", { ascending: true, nullsFirst: false }),
           api.invoices(),
         ]);
+        // Best-effort: the activity feed is decorative and silently stays
+        // empty when the activity_log table hasn't been created yet.
+        api.activity(6).then((a) => {
+          if (!cancelled) setActivity(a);
+        });
 
         if (cancelled) return;
         if (clientsRes.error || projectsRes.error || tasksRes.error) {
@@ -299,6 +306,35 @@ export default function DashboardPage() {
                   </div>
                 </div>
               )}
+
+              {activity.length > 0 && (
+                <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-soft">
+                  <h2 className="mb-4 font-semibold">{t("recentActivity")}</h2>
+                  <ul className="space-y-4">
+                    {activity.map((entry) => (
+                      <li key={entry.id} className="flex items-start gap-3">
+                        <span
+                          className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg text-sm ${
+                            entry.action === "deleted"
+                              ? "bg-red-950/60 text-red-300"
+                              : entry.action === "created"
+                                ? "bg-emerald-950/60 text-emerald-300"
+                                : "bg-indigo-950/60 text-indigo-300"
+                          }`}
+                        >
+                          {entry.action === "deleted" ? "−" : entry.action === "created" ? "+" : "~"}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm">{activityText(entry, t)}</p>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {timeAgo(entry.created_at)}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </section>
         </>
@@ -306,6 +342,30 @@ export default function DashboardPage() {
     </AppShell>
   );
 }
+
+/**
+ * «مشتری «رستوران نُه» ساخته شد» — rendered from the DB row (entity + action +
+ * summary) using the centralized translations; quoted name kept RTL-safe.
+ */
+function activityText(
+  entry: ActivityEntry,
+  t: (key: TranslationKey) => string
+) {
+  return `${t(entityLabel[entry.entity])} «${entry.summary}» ${t(actionVerb[entry.action])}`;
+}
+
+const entityLabel: Record<ActivityEntry["entity"], TranslationKey> = {
+  client: "entityClient",
+  project: "entityProject",
+  task: "entityTask",
+  invoice: "entityInvoice",
+};
+
+const actionVerb: Record<ActivityEntry["action"], TranslationKey> = {
+  created: "actionCreated",
+  updated: "actionUpdated",
+  deleted: "actionDeleted",
+};
 
 function StatCard({
   icon,

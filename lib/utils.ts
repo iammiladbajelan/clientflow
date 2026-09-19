@@ -39,6 +39,19 @@ export function isOverdue(dateStr: string | null | undefined) {
   return dateStr < today;
 }
 
+/** "چند لحظه پیش"، «۵ دقیقه پیش»، «۳ ساعت پیش»، «دیروز»، «۴ روز پیش». */
+export function timeAgo(iso: string) {
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (seconds < 60) return "چند لحظه پیش";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${faNum(minutes)} دقیقه پیش`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${faNum(hours)} ساعت پیش`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "دیروز";
+  return `${faNum(days)} روز پیش`;
+}
+
 function faNum(n: number) {
   return n.toLocaleString("fa-IR");
 }
